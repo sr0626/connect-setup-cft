@@ -1,0 +1,14 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "CloudFormation template to create a basic Amazon Connect instance",
+  "Resources": {
+    "ConnectInstance": {
+      "Type": "AWS::Connect::Instance",
+      "Properties": {
+        "IdentityManagementType": "CONNECT_MANAGED",
+        "InboundCallsEnabled": true,
+        "OutboundCallsEnabled": true
+      }
+    }
+  }
+}

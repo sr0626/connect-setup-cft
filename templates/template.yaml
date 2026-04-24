@@ -1,0 +1,24 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template to create a basic Amazon Connect instance'
+
+Resources:
+  ConnectInstance:
+    Type: AWS::Connect::Instance
+    Properties:
+      IdentityManagementType: CONNECT_MANAGED
+      InboundCallsEnabled: true
+      OutboundCallsEnabled: true
+      InstanceAlias: my-connect-instance
+
+Outputs:
+  ConnectInstanceArn:
+    Description: The ARN of the Amazon Connect instance
+    Value: !GetAtt ConnectInstance.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ConnectInstanceArn'
+
+  ConnectInstanceId:
+    Description: The ID of the Amazon Connect instance
+    Value: !Ref ConnectInstance
+    Export:
+      Name: !Sub '${AWS::StackName}-ConnectInstanceId'
