@@ -1,0 +1,131 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Parent template for Amazon Connect setup with Kinesis streaming and Lambda processing"
+
+Parameters:
+  LambdaCodeBucket:
+    Type: String
+    Description: "S3 bucket where Lambda deployment packages are stored"
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Lambda Configuration"
+        Parameters:
+          - LambdaCodeBucket
+
+Resources:
+#####################################################
+# IAM Role Stack
+#####################################################
+  IAMStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      StackName: !Sub 'connect-iam-${AWS::StackName}'
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${LambdaCodeBucket}/templates/stacks/iam-role.yaml'
+      Tags:
+        - Key: Application
+          Value: AmazonConnect
+
+#####################################################
+# Storage Stack (S3 + KMS)
+#####################################################
+  StorageStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      StackName: !Sub 'connect-storage-${AWS::StackName}'
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${LambdaCodeBucket}/templates/stacks/storage.yaml'
+      Tags:
+        - Key: Application
+          Value: AmazonConnect
+
+#####################################################
+# Kinesis Streams Stack
+#####################################################
+  KinesisStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      StackName: !Sub 'connect-kinesis-${AWS::StackName}'
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${LambdaCodeBucket}/templates/stacks/kinesis-streams.yaml'
+      Tags:
+        - Key: Application
+          Value: AmazonConnect
+
+#####################################################
+# Lambda Functions Stack
+#####################################################
+  LambdaStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - IAMStack
+      - KinesisStack
+    Properties:
+      StackName: !Sub 'connect-lambdas-${AWS::StackName}'
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${LambdaCodeBucket}/templates/stacks/lambdas.yaml'
+      Parameters:
+        LambdaCodeBucket: !Ref LambdaCodeBucket
+        LambdaExecutionRoleArn: !GetAtt IAMStack.Outputs.LambdaExecutionRoleArn
+      Tags:
+        - Key: Application
+          Value: AmazonConnect
+
+#####################################################
+# Connect Instance Stack
+#####################################################
+  ConnectStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - StorageStack
+      - KinesisStack
+    Properties:
+      StackName: !Sub 'connect-instance-${AWS::StackName}'
+      TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${LambdaCodeBucket}/templates/stacks/connect-instance.yaml'
+      Parameters:
+        S3BucketName: !GetAtt StorageStack.Outputs.S3BucketName
+        KmsKeyArn: !GetAtt StorageStack.Outputs.KmsKeyArn
+        CTRStreamArn: !GetAtt KinesisStack.Outputs.CTRStreamArn
+        AgentEventStreamArn: !GetAtt KinesisStack.Outputs.AgentEventStreamArn
+      Tags:
+        - Key: Application
+          Value: AmazonConnect
+
+Outputs:
+  ConnectInstanceArn:
+    Description: "Amazon Connect Instance ARN"
+    Value: !GetAtt ConnectStack.Outputs.ConnectInstanceArn
+
+  ConnectInstanceAlias:
+    Description: "Amazon Connect Instance Alias"
+    Value: !GetAtt ConnectStack.Outputs.ConnectInstanceAlias
+
+  CCPLoginUrl:
+    Description: "Agent CCP Login URL"
+    Value: !GetAtt ConnectStack.Outputs.CCPLoginUrl
+
+  S3BucketName:
+    Description: "S3 bucket for call recordings"
+    Value: !GetAtt StorageStack.Outputs.S3BucketName
+
+  CTRStreamArn:
+    Description: "Contact Trace Records Kinesis Stream ARN"
+    Value: !GetAtt KinesisStack.Outputs.CTRStreamArn
+
+  AgentEventStreamArn:
+    Description: "Agent Events Kinesis Stream ARN"
+    Value: !GetAtt KinesisStack.Outputs.AgentEventStreamArn
+
+  CTRProcessorLambdaArn:
+    Description: "CTR Processor Lambda ARN"
+    Value: !GetAtt LambdaStack.Outputs.CTRProcessorLambdaArn
+
+  AgentEventProcessorLambdaArn:
+    Description: "Agent Event Processor Lambda ARN"
+    Value: !GetAtt LambdaStack.Outputs.AgentEventProcessorLambdaArn
+
+  AdminUsername:
+    Description: "Connect Admin Username"
+    Value: !GetAtt ConnectStack.Outputs.AdminUsername
+
+  AdminPasswordSecret:
+    Description: "Secrets Manager secret containing admin password"
+    Value: !GetAtt ConnectStack.Outputs.AdminPasswordSecretName

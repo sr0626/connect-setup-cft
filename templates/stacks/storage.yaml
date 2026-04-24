@@ -1,0 +1,82 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "S3 and KMS resources for Amazon Connect call recordings"
+
+Resources:
+#####################################################
+# KMS key for S3 Bucket Encryption
+#####################################################
+  ConnectKmsKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: "KMS Key for encrypting Connect call recordings"
+      Enabled: true
+      EnableKeyRotation: true  
+      KeyPolicy:
+        Version: 2012-10-17
+        Id: connectkmskey
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action:
+              - 'kms:*'
+            Resource: '*'
+
+  ConnectKmsKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/connect-recordings-${AWS::StackName}'
+      TargetKeyId: !Ref ConnectKmsKey
+
+#####################################################
+# S3 Bucket for storing call recordings
+#####################################################
+  ConnectS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub
+        - 'connect-recordings-${UUID}'
+        - UUID: !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: TransitionToGlacierAfter90Days
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 90
+                StorageClass: GLACIER
+
+  ConnectS3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ConnectS3Bucket
+      PolicyText:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowConnectAccess
+            Effect: Allow
+            Principal:
+              Service: connect.amazonaws.com
+            Action:
+              - 's3:PutObject'
+            Resource: !Sub '${ConnectS3Bucket.Arn}/*'
+
+Outputs:
+  S3BucketName:
+    Description: "S3 Bucket for Connect call recordings"
+    Value: !Ref ConnectS3Bucket
+    Export:
+      Name: !Sub '${AWS::StackName}-s3-bucket'
+
+  KmsKeyArn:
+    Description: "KMS Key ARN for S3 encryption"
+    Value: !GetAtt ConnectKmsKey.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-kms-key-arn'

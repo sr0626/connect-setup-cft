@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Lambda functions for processing Amazon Connect events from Kinesis"
+
+Parameters:
+  LambdaCodeBucket:
+    Type: String
+    Description: "S3 bucket containing Lambda function code packages"
+  
+  CTRProcessorCodeKey:
+    Type: String
+    Description: "S3 key for CTR processor Lambda zip file"
+    Default: "lambda/ctr-processor.zip"
+  
+  AgentEventProcessorCodeKey:
+    Type: String
+    Description: "S3 key for Agent Event processor Lambda zip file"
+    Default: "lambda/agent-event-processor.zip"
+  
+  LambdaExecutionRoleArn:
+    Type: String
+    Description: "ARN of the Lambda execution role"
+
+Resources:
+#####################################################
+# Lambda function to process CTR events
+#####################################################
+  CTRProcessorLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'connect-ctr-processor-${AWS::StackName}'
+      Description: "Process Contact Trace Records from Kinesis and log to CloudWatch"
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref CTRProcessorCodeKey
+      Handler: lambda_function.lambda_handler
+      Role: !Ref LambdaExecutionRoleArn
+      Runtime: python3.13
+      Timeout: 60
+      MemorySize: 256
+      LoggingConfig:
+        LogFormat: JSON
+        LogGroup: !Ref CTRProcessorLogGroup
+
+  CTRProcessorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/connect-ctr-processor-${AWS::StackName}'
+      RetentionInDays: 7
+
+  CTRProcessorEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      FunctionName: !Ref CTRProcessorLambda
+      EventSourceArn: !Sub '{{resolve:secretsmanager:ctr-stream-arn:SecretString:arn}}'
+      StartingPosition: LATEST
+      BatchSize: 100
+      MaximumBatchingWindowInSeconds: 5
+
+#####################################################
+# Lambda function to process Agent Events
+#####################################################
+  AgentEventProcessorLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'connect-agent-event-processor-${AWS::StackName}'
+      Description: "Process Agent Events from Kinesis and log to CloudWatch"
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref AgentEventProcessorCodeKey
+      Handler: lambda_function.lambda_handler
+      Role: !Ref LambdaExecutionRoleArn
+      Runtime: python3.13
+      Timeout: 60
+      MemorySize: 256
+      LoggingConfig:
+        LogFormat: JSON
+        LogGroup: !Ref AgentEventProcessorLogGroup
+
+  AgentEventProcessorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/connect-agent-event-processor-${AWS::StackName}'
+      RetentionInDays: 7
+
+Outputs:
+  CTRProcessorLambdaArn:
+    Description: "ARN of the CTR Processor Lambda function"
+    Value: !GetAtt CTRProcessorLambda.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ctr-processor-arn'
+
+  AgentEventProcessorLambdaArn:
+    Description: "ARN of the Agent Event Processor Lambda function"
+    Value: !GetAtt AgentEventProcessorLambda.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-agent-event-processor-arn'
+
+  CTRProcessorLogGroupName:
+    Description: "CloudWatch Log Group for CTR Processor"
+    Value: !Ref CTRProcessorLogGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-ctr-processor-logs'
+
+  AgentEventProcessorLogGroupName:
+    Description: "CloudWatch Log Group for Agent Event Processor"
+    Value: !Ref AgentEventProcessorLogGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-agent-event-processor-logs'

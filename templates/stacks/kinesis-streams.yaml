@@ -1,0 +1,52 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Kinesis Data Streams for Amazon Connect Contact Trace Records and Agent Events"
+
+Resources:
+#####################################################
+# Contact Trace Records Kinesis Stream
+#####################################################
+  CTRStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: !Sub
+        - 'sample-ctr-stream-${UUID}'
+        - UUID: !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]
+      RetentionPeriodHours: 24
+      ShardCount: 1
+
+#####################################################
+# Agent Events Kinesis Stream
+#####################################################
+  AgentEventStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: !Sub
+        - 'sample-agent-events-stream-${UUID}'
+        - UUID: !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]
+      RetentionPeriodHours: 24
+      ShardCount: 1
+
+Outputs:
+  CTRStreamArn:
+    Description: "ARN of the Contact Trace Records Kinesis Stream"
+    Value: !GetAtt CTRStream.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ctr-stream-arn'
+
+  AgentEventStreamArn:
+    Description: "ARN of the Agent Events Kinesis Stream"
+    Value: !GetAtt AgentEventStream.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-agent-event-stream-arn'
+
+  CTRStreamName:
+    Description: "Name of the Contact Trace Records Kinesis Stream"
+    Value: !Ref CTRStream
+    Export:
+      Name: !Sub '${AWS::StackName}-ctr-stream-name'
+
+  AgentEventStreamName:
+    Description: "Name of the Agent Events Kinesis Stream"
+    Value: !Ref AgentEventStream
+    Export:
+      Name: !Sub '${AWS::StackName}-agent-event-stream-name'

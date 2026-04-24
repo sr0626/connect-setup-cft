@@ -1,0 +1,55 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "IAM Role for Amazon Connect Lambda functions"
+
+Resources:
+#####################################################
+# IAM Role for Lambda execution
+#####################################################
+  ConnectLambdaExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: !Sub 'connect-lambda-execution-role-${AWS::StackName}'
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+                - "sts:AssumeRole"
+      Description: "Role for Connect Lambda functions with CloudFormation, Connect, Kinesis, and logging permissions"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      Policies:
+        - PolicyName: ConnectComponents
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - connect:ListSecurityProfiles
+                  - connect:AssociatePhoneNumberContactFlow
+                  - connect:DisassociatePhoneNumberContactFlow
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - kinesis:GetRecords
+                  - kinesis:GetShardIterator
+                  - kinesis:DescribeStream
+                  - kinesis:ListShards
+                Resource: !Sub 'arn:aws:kinesis:${AWS::Region}:${AWS::AccountId}:stream/sample-ctr-stream-*'
+              - Effect: Allow
+                Action:
+                  - kinesis:GetRecords
+                  - kinesis:GetShardIterator
+                  - kinesis:DescribeStream
+                  - kinesis:ListShards
+                Resource: !Sub 'arn:aws:kinesis:${AWS::Region}:${AWS::AccountId}:stream/sample-agent-events-stream-*'
+
+Outputs:
+  LambdaExecutionRoleArn:
+    Description: "ARN of the Lambda Execution Role"
+    Value: !GetAtt ConnectLambdaExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-lambda-role-arn'

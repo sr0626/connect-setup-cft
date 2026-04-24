@@ -1,0 +1,333 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Amazon Connect instance with queues, routing profiles, and users"
+
+Parameters:
+  S3BucketName:
+    Type: String
+    Description: "S3 bucket for call recordings"
+  
+  KmsKeyArn:
+    Type: String
+    Description: "KMS key ARN for S3 encryption"
+
+  CTRStreamArn:
+    Type: String
+    Description: "ARN of the Contact Trace Records Kinesis stream"
+
+  AgentEventStreamArn:
+    Type: String
+    Description: "ARN of the Agent Events Kinesis stream"
+
+Resources:
+#####################################################
+# Amazon Connect Instance
+#####################################################
+  ConnectInstance:
+    Type: AWS::Connect::Instance
+    Properties:
+      Attributes:
+        InboundCalls: true
+        OutboundCalls: true
+        ContactflowLogs: true
+      IdentityManagementType: "CONNECT_MANAGED"
+      InstanceAlias: !Join ['-', [sample, !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]]]
+
+#####################################################
+# Amazon Connect Storage Configuration - Call Recordings
+#####################################################
+  ConnectStorageS3:
+    Type: AWS::Connect::InstanceStorageConfig
+    DependsOn:
+      - ConnectInstance
+    Properties:
+      InstanceArn: !GetAtt ConnectInstance.Arn
+      ResourceType: CALL_RECORDINGS
+      S3Config:
+        BucketName: !Ref S3BucketName
+        BucketPrefix: recordings
+        EncryptionConfig:
+          EncryptionType: KMS
+          KeyId: !Ref KmsKeyArn
+      StorageType: S3
+
+#####################################################
+# Amazon Connect Storage Configuration - CTR
+#####################################################
+  ConnectStorageCTR:
+    Type: AWS::Connect::InstanceStorageConfig
+    DependsOn:
+      - ConnectInstance
+    Properties:
+      InstanceArn: !GetAtt ConnectInstance.Arn
+      ResourceType: CONTACT_TRACE_RECORDS
+      StorageType: KINESIS_STREAM
+      KinesisStreamConfig:
+        StreamArn: !Ref CTRStreamArn
+
+#####################################################
+# Amazon Connect Storage Configuration - Agent Events
+#####################################################
+  ConnectStorageAgentEvents:
+    Type: AWS::Connect::InstanceStorageConfig
+    DependsOn:
+      - ConnectInstance
+    Properties:
+      InstanceArn: !GetAtt ConnectInstance.Arn
+      ResourceType: AGENT_EVENTS
+      StorageType: KINESIS_STREAM
+      KinesisStreamConfig:
+        StreamArn: !Ref AgentEventStreamArn
+
+#####################################################
+# Hours of Operation (24/7)
+#####################################################
+  HoursOfOperation:
+    Type: AWS::Connect::HoursOfOperation
+    DependsOn:
+      - ConnectInstance
+    Properties:
+      InstanceArn: !GetAtt ConnectInstance.Arn
+      Name: 'SampleHoursOfOperations'
+      Description: '24x7 Hours of Operation'
+      TimeZone: 'US/Eastern'
+      Config: 
+        - Day: 'SUNDAY'
+          StartTime: {Hours: 0, Minutes: 0}
+          EndTime: {Hours: 0, Minutes: 0}
+        - Day: 'MONDAY'
+          StartTime: {Hours: 0, Minutes: 0}
+          EndTime: {Hours: 0, Minutes: 0}
+        - Day: 'TUESDAY'
+          StartTime: {Hours: 0, Minutes: 0}
+          EndTime: {Hours: 0, Minutes: 0}
+        - Day: 'WEDNESDAY'
+          StartTime: {Hours: 0, Minutes: 0}
+          EndTime: {Hours: 0, Minutes: 0}
+        - Day: 'THURSDAY'
+          StartTime: {Hours: 0, Minutes: 0}
+          EndTime: {Hours: 0, Minutes: 0}
+        - Day: 'FRIDAY'
+          StartTime: {Hours: 0, Minutes: 0}
+          EndTime: {Hours: 0, Minutes: 0}
+        - Day: 'SATURDAY'
+          StartTime: {Hours: 0, Minutes: 0}
+          EndTime: {Hours: 0, Minutes: 0}
+
+#####################################################
+# Queue
+#####################################################
+  Queue:
+    Type: AWS::Connect::Queue
+    DependsOn:
+      - HoursOfOperation
+    Properties:
+      InstanceArn: !GetAtt ConnectInstance.Arn
+      Name: 'SampleQueue'
+      Description: 'Sample queue for inbound calls'
+      Status: ENABLED
+      HoursOfOperationArn: !GetAtt HoursOfOperation.HoursOfOperationArn
+
+#####################################################
+# Routing Profile
+#####################################################
+  RoutingProfile:
+    Type: AWS::Connect::RoutingProfile
+    DependsOn:
+      - Queue
+    Properties:
+      InstanceArn: !GetAtt ConnectInstance.Arn
+      Name: 'SampleRoutingProfile'
+      Description: 'Sample routing profile'
+      DefaultOutboundQueueArn: !GetAtt Queue.QueueArn
+      MediaConcurrencies:
+        - Channel: VOICE
+          Concurrency: 1
+          CrossChannelBehavior: {BehaviorType: ROUTE_CURRENT_CHANNEL_ONLY}
+        - Channel: CHAT
+          Concurrency: 1
+          CrossChannelBehavior: {BehaviorType: ROUTE_CURRENT_CHANNEL_ONLY}
+        - Channel: TASK
+          Concurrency: 1
+          CrossChannelBehavior: {BehaviorType: ROUTE_CURRENT_CHANNEL_ONLY}
+      QueueConfigs:
+        - Delay: 0
+          Priority: 1
+          QueueReference: {Channel: VOICE, QueueArn: !GetAtt Queue.QueueArn}
+        - Delay: 0
+          Priority: 1
+          QueueReference: {Channel: CHAT, QueueArn: !GetAtt Queue.QueueArn}
+        - Delay: 0
+          Priority: 1
+          QueueReference: {Channel: TASK, QueueArn: !GetAtt Queue.QueueArn}
+
+#####################################################
+# Contact Flow
+#####################################################
+  ContactFlow:
+    Type: AWS::Connect::ContactFlow
+    DependsOn:
+      - ConnectInstance
+      - Queue
+    Properties:
+      InstanceArn: !GetAtt ConnectInstance.Arn
+      Name: SampleContactflow
+      Description: 'Sample contact flow that plays a message and transfers to queue'
+      Type: CONTACT_FLOW
+      Content: !Sub |
+        {"Version":"2019-10-30","StartAction":"1d641d97-000e-4af1-a325-8bf57cd04c60","Metadata":{"entryPointPosition":{"x":40,"y":40},"ActionMetadata":{"9ce12cf0-5388-430a-9544-03a3278dae6c":{"position":{"x":968,"y":99.2}},"1d641d97-000e-4af1-a325-8bf57cd04c60":{"position":{"x":178.4,"y":49.6}},"4e943f20-8e13-4144-b450-788d44956cbc":{"position":{"x":702.4,"y":70.4}},"6c356030-ce38-4a9f-a355-281ad1cd25e9":{"position":{"x":432.8,"y":64},"parameters":{"QueueId":{"displayName":"SampleQueue"}},"queue":{"text":"SampleQueue"}}},"Annotations":[],"name":"SampleContactflow","description":"","type":"contactFlow","status":"SAVED","hash":{}},"Actions":[{"Parameters":{},"Identifier":"9ce12cf0-5388-430a-9544-03a3278dae6c","Type":"DisconnectParticipant","Transitions":{}},{"Parameters":{"Text":"Hello, thank you for using Amazon Connect for your call center application. Your call is very important to us and will be answered in the order it was received."},"Identifier":"1d641d97-000e-4af1-a325-8bf57cd04c60","Type":"MessageParticipant","Transitions":{"NextAction":"6c356030-ce38-4a9f-a355-281ad1cd25e9","Errors":[{"NextAction":"6c356030-ce38-4a9f-a355-281ad1cd25e9","ErrorType":"NoMatchingError"}]}},{"Parameters":{},"Identifier":"4e943f20-8e13-4144-b450-788d44956cbc","Type":"TransferContactToQueue","Transitions":{"NextAction":"9ce12cf0-5388-430a-9544-03a3278dae6c","Errors":[{"NextAction":"9ce12cf0-5388-430a-9544-03a3278dae6c","ErrorType":"QueueAtCapacity"},{"NextAction":"9ce12cf0-5388-430a-9544-03a3278dae6c","ErrorType":"NoMatchingError"}]}},{"Parameters":{"QueueId":"${Queue.QueueArn}"},"Identifier":"6c356030-ce38-4a9f-a355-281ad1cd25e9","Type":"UpdateContactTargetQueue","Transitions":{"NextAction":"4e943f20-8e13-4144-b450-788d44956cbc","Errors":[{"NextAction":"4e943f20-8e13-4144-b450-788d44956cbc","ErrorType":"NoMatchingError"}]}}]}
+
+#####################################################
+# Admin User Credentials
+#####################################################
+  AdminPassword:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub 'connect-admin-password-${AWS::StackName}'
+      Description: 'Auto-generated password for Connect admin user'
+      GenerateSecretString: 
+        IncludeSpace: false
+        PasswordLength: 9
+        RequireEachIncludedType: true
+        ExcludeCharacters: '"@/\'
+        SecretStringTemplate: '{"username": "Sampleadmin"}'
+        GenerateStringKey: password
+
+#####################################################
+# Security Profile Lookup Lambda (helper)
+#####################################################
+  SecurityProfileLookupRole:
+    Type: AWS::IAM::Role
+    DependsOn:
+      - ConnectInstance
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: ConnectAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - connect:ListSecurityProfiles
+                Resource: '*'
+
+  SecurityProfileLookupFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: 'Retrieve Admin security profile ARN from Connect'
+      Role: !GetAtt SecurityProfileLookupRole.Arn
+      Runtime: python3.13
+      Handler: index.lambda_handler
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import os
+          import cfnresponse
+
+          client = boto3.client('connect')
+          instance_arn = os.environ['INSTANCE_ARN']
+
+          def lambda_handler(event, context):
+              try:
+                  if event['RequestType'] in ['Create', 'Update']:
+                      instance_id = instance_arn.split('/')[-1]
+                      response = client.list_security_profiles(
+                          InstanceId=instance_id,
+                          MaxResults=50
+                      )
+                      
+                      for profile in response['SecurityProfileSummaryList']:
+                          if profile['Name'] == 'Admin':
+                              cfnresponse.send(event, context, cfnresponse.SUCCESS, 
+                                             {'SecProfileArn': profile['Arn']}, 'LookupComplete')
+                              return
+                      
+                      raise Exception('Admin security profile not found')
+                  else:
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, 'LookupComplete')
+              except Exception as e:
+                  print(f'Error: {str(e)}')
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {}, str(e))
+      Environment:
+        Variables:
+          INSTANCE_ARN: !GetAtt ConnectInstance.Arn
+
+  SecurityProfileLookup:
+    Type: AWS::CloudFormation::CustomResource
+    DependsOn:
+      - SecurityProfileLookupFunction
+    Properties:
+      ServiceToken: !GetAtt SecurityProfileLookupFunction.Arn
+
+#####################################################
+# Admin User
+#####################################################
+  AdminUser:
+    Type: AWS::Connect::User
+    DependsOn:
+      - SecurityProfileLookup
+      - RoutingProfile
+    Properties:
+      InstanceArn: !GetAtt ConnectInstance.Arn
+      Username: Sampleadmin
+      Password: !Sub
+        - '{{resolve:secretsmanager:${Secret}::password}}'
+        - Secret: !Ref AdminPassword
+      IdentityInfo:
+        FirstName: Admin
+        LastName: User
+      RoutingProfileArn: !GetAtt RoutingProfile.RoutingProfileArn
+      SecurityProfileArns:
+        - !GetAtt SecurityProfileLookup.SecProfileArn
+      PhoneConfig:
+        PhoneType: SOFT_PHONE
+
+Outputs:
+  ConnectInstanceArn:
+    Description: "ARN of the Amazon Connect instance"
+    Value: !GetAtt ConnectInstance.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-instance-arn'
+
+  ConnectInstanceAlias:
+    Description: "Alias name of the Connect instance"
+    Value: !Join ['-', [sample, !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]]]
+    Export:
+      Name: !Sub '${AWS::StackName}-instance-alias'
+
+  CCPLoginUrl:
+    Description: "Agent CCP Login URL"
+    Value: !Join 
+      - ''
+      - - 'https://'
+        - !Join ['-', [sample, !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]]]
+        - '.my.connect.aws/agent-app-v2'
+
+  ContactFlowArn:
+    Description: "ARN of the sample contact flow"
+    Value: !GetAtt ContactFlow.ContactFlowArn
+    Export:
+      Name: !Sub '${AWS::StackName}-contact-flow-arn'
+
+  QueueArn:
+    Description: "ARN of the sample queue"
+    Value: !GetAtt Queue.QueueArn
+    Export:
+      Name: !Sub '${AWS::StackName}-queue-arn'
+
+  AdminUsername:
+    Description: "Admin username"
+    Value: 'Sampleadmin'
+
+  AdminPasswordSecretName:
+    Description: "Secrets Manager secret containing admin password"
+    Value: !Ref AdminPassword
