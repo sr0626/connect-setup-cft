@@ -12,7 +12,8 @@ AWSTemplateFormatVersion: "2010-09-09"
 #   8. Amazon Connect Contact Flow
 #   9. Amazon Connect Phone Number
 #   10. IAM role for lambda
-#   11. 2 Lambda functions
+#   11. Lambda functions for Connect setup and Kinesis processing
+#   12. Kinesis Data Streams for CTR and Agent Events
 #################################################################################################
 Description: The template will create the resources needed for the amazon connect
 
@@ -89,6 +90,54 @@ Resources:
           EncryptionType: KMS
           KeyId: !GetAtt SampleConnectKmsKey.Arn
       StorageType: S3                           
+#####################################################
+# Contact Trace Records Kinesis Stream
+#####################################################
+  # SampleConnectCTRStream:
+  #   Type: AWS::Kinesis::Stream
+  #   Properties:
+  #     Name: !Sub
+  #       - 'sample-ctr-stream-${UUID}'
+  #       - UUID: !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]
+  #     RetentionPeriodHours: 24
+  #     ShardCount: 1
+
+  # SampleConnectCTRStorageConfig:
+  #   Type: AWS::Connect::InstanceStorageConfig
+  #   DependsOn:
+  #     - SampleConnect
+  #     - SampleConnectCTRStream
+  #   Properties:
+  #     InstanceArn: !GetAtt SampleConnect.Arn
+  #     ResourceType: CONTACT_TRACE_RECORDS
+  #     StorageType: KINESIS_STREAM
+  #     KinesisStreamConfig:
+  #       StreamArn: !GetAtt SampleConnectCTRStream.Arn
+
+#####################################################
+# Agent Events Kinesis Stream
+#####################################################
+  # SampleConnectAgentEventStream:
+  #   Type: AWS::Kinesis::Stream
+  #   Properties:
+  #     Name: !Sub
+  #       - 'sample-agent-events-stream-${UUID}'
+  #       - UUID: !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]
+  #     RetentionPeriodHours: 24
+  #     ShardCount: 1
+
+  # SampleConnectAgentEventStorageConfig:
+  #   Type: AWS::Connect::InstanceStorageConfig
+  #   DependsOn:
+  #     - SampleConnect
+  #     - SampleConnectAgentEventStream
+  #   Properties:
+  #     InstanceArn: !GetAtt SampleConnect.Arn
+  #     ResourceType: AGENT_EVENTS
+  #     StorageType: KINESIS_STREAM
+  #     KinesisStreamConfig:
+  #       StreamArn: !GetAtt SampleConnectAgentEventStream.Arn
+
 #####################################################
 # Create Hours of operations
 #####################################################
@@ -246,12 +295,12 @@ Resources:
 #####################################################
 # Claiming the Phone Number
 #####################################################
-#   SamplePhonenumber: 
-#     Type: AWS::Connect::PhoneNumber    
-#     Properties:
-#       CountryCode: US
-#       TargetArn: !GetAtt SampleConnect.Arn
-#       Type: DID
+  # SamplePhonenumber: 
+  #   Type: AWS::Connect::PhoneNumber    
+  #   Properties:
+  #     CountryCode: US
+  #     TargetArn: !GetAtt SampleConnect.Arn
+  #     Type: DID
 #####################################################
 # IAM Role for Lambda execution
 #####################################################
@@ -287,6 +336,20 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+              - Effect: Allow
+                Action:
+                  - kinesis:GetRecords
+                  - kinesis:GetShardIterator
+                  - kinesis:DescribeStream
+                  - kinesis:ListShards
+                Resource: !Sub 'arn:aws:kinesis:${AWS::Region}:${AWS::AccountId}:stream/sample-ctr-stream-*'
+              - Effect: Allow
+                Action:
+                  - kinesis:GetRecords
+                  - kinesis:GetShardIterator
+                  - kinesis:DescribeStream
+                  - kinesis:ListShards
+                Resource: !Sub 'arn:aws:kinesis:${AWS::Region}:${AWS::AccountId}:stream/sample-agent-events-stream-*'
 #####################################################
 # Execute the lambda
 #####################################################
@@ -389,93 +452,179 @@ Resources:
 #####################################################
 # Lambda function to associate and disassociate the phone number to conatct flow
 #####################################################
-#   SampleFnAssignClaimedPhoneNumber:
-#     Type: AWS::Lambda::Function
-#     Properties:
-#       Description: Function to assign toll free number
-#       Environment:
-#         Variables:
-#           INSTANCEARN: !GetAtt SampleConnect.Arn
-#           PHONENUMBERARN: !GetAtt SamplePhonenumber.PhoneNumberArn
-#           CONTACTFLOWARN: !GetAtt SampleContactFlow.ContactFlowArn
-#       Code:
-#         ZipFile: |
-#           # MIT No Attribution
+  SampleFnAssignClaimedPhoneNumber:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Function to assign toll free number
+      Environment:
+        Variables:
+          INSTANCEARN: !GetAtt SampleConnect.Arn
+          #PHONENUMBERARN: !GetAtt SamplePhonenumber.PhoneNumberArn
+          CONTACTFLOWARN: !GetAtt SampleContactFlow.ContactFlowArn
+      Code:
+        ZipFile: |
+          # MIT No Attribution
 
-#           # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+          # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
-#           # Permission is hereby granted, free of charge, to any person obtaining a copy of this
-#           # software and associated documentation files (the "Software"), to deal in the Software
-#           # without restriction, including without limitation the rights to use, copy, modify,
-#           # merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
-#           # permit persons to whom the Software is furnished to do so.
+          # Permission is hereby granted, free of charge, to any person obtaining a copy of this
+          # software and associated documentation files (the "Software"), to deal in the Software
+          # without restriction, including without limitation the rights to use, copy, modify,
+          # merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+          # permit persons to whom the Software is furnished to do so.
 
-#           # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-#           # INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-#           # PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
-#           # HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-#           # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-#           # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+          # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+          # INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+          # PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+          # HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+          # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+          # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-#           import json
-#           import boto3
-#           import os
-#           import cfnresponse
+          import json
+          import boto3
+          import os
+          import cfnresponse
 
-#           client = boto3.client('connect')
+          client = boto3.client('connect')
 
-#           InstanceArn= os.environ['INSTANCEARN']
-#           TollFreeArn = os.environ['PHONENUMBERARN']
-#           ContactFlowArn = os.environ['CONTACTFLOWARN']
+          InstanceArn= os.environ['INSTANCEARN']
+          #TollFreeArn = os.environ['PHONENUMBERARN']
+          ContactFlowArn = os.environ['CONTACTFLOWARN']
 
-#           def lambda_handler(event, context):
+          def lambda_handler(event, context):
 
-#             print(event)
+            print(event)
 
-#             if event['RequestType'] == 'Create':
-#               try:
-#                 InstanceId = InstanceArn[-36:]
-#                 ContactFlowId = ContactFlowArn[-36:]
-#                 response = client.associate_phone_number_contact_flow(
-#                   PhoneNumberId=TollFreeArn,
-#                   InstanceId=InstanceId,
-#                   ContactFlowId=ContactFlowId
-#                 )
+            if event['RequestType'] == 'Create':
+              try:
+                InstanceId = InstanceArn[-36:]
+                ContactFlowId = ContactFlowArn[-36:]
+                response = client.associate_phone_number_contact_flow(
+                  #PhoneNumberId=TollFreeArn,
+                  InstanceId=InstanceId,
+                  ContactFlowId=ContactFlowId
+                )
 
-#                 responseData = {}
-#                 responseData['response'] = response
-#                 cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, "CustomResourcePhysicalID")
-#                 print(response)
+                responseData = {}
+                responseData['response'] = response
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, "CustomResourcePhysicalID")
+                print(response)
 
-#               except Exception as a:
-#                 print (a)
-#                 return { 'message': 'Failed to associate the phone number to contact flow' }
+              except Exception as a:
+                print (a)
+                return { 'message': 'Failed to associate the phone number to contact flow' }
 
-#             elif event['RequestType'] == 'Delete':
-#               try:
-#                 InstanceId = InstanceArn[-36:]
-#                 response = client.disassociate_phone_number_contact_flow(
-#                   PhoneNumberId=TollFreeArn,
-#                   InstanceId=InstanceId
-#                 )
+            elif event['RequestType'] == 'Delete':
+              try:
+                InstanceId = InstanceArn[-36:]
+                response = client.disassociate_phone_number_contact_flow(
+                  #PhoneNumberId=TollFreeArn,
+                  InstanceId=InstanceId
+                )
 
-#                 responseData = {}
-#                 responseData['response'] = response
-#                 cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, "CustomResourcePhysicalID")
-#                 print(response)
+                responseData = {}
+                responseData['response'] = response
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, "CustomResourcePhysicalID")
+                print(response)
 
-#               except Exception as a:
-#                 print (a)
-#                 return { 'message': 'Failed to disassociate the phone number to contact flow' }                
+              except Exception as a:
+                print (a)
+                return { 'message': 'Failed to disassociate the phone number to contact flow' }                
 
-#             else:
-#                 responseData = {}
-#                 responseData['Data'] = "Delete"
-#                 cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, "CustomResourcePhysicalID")
+            else:
+                responseData = {}
+                responseData['Data'] = "Delete"
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, "CustomResourcePhysicalID")
 
-#       Handler: index.lambda_handler
-#       Role: !GetAtt SampleIAMRole.Arn
-#       Runtime: !FindInMap [Environment, Python, Runtime]
+      Handler: index.lambda_handler
+      Role: !GetAtt SampleIAMRole.Arn
+      Runtime: !FindInMap [Environment, Python, Runtime]
+#####################################################
+# Lambda function to process CTR events from Kinesis
+#####################################################
+  SampleCTRProcessorLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Function to process Contact Trace Records from Kinesis and log to CloudWatch
+      Code:
+        ZipFile: |
+          import json
+          import base64
+          import logging
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
+          def lambda_handler(event, context):
+              for record in event['Records']:
+                  try:
+                      # Decode the base64 encoded data
+                      payload = base64.b64decode(record['kinesis']['data'])
+                      data = json.loads(payload.decode('utf-8'))
+                      # Log the CTR event as JSON
+                      logger.info(json.dumps(data))
+                  except Exception as e:
+                      logger.error(f"Error processing record: {str(e)}")
+                      logger.error(f"Raw data: {record['kinesis']['data']}")
+      Handler: index.lambda_handler
+      Role: !GetAtt SampleIAMRole.Arn
+      Runtime: !FindInMap [Environment, Python, Runtime]
+
+  # SampleCTRProcessorEventSourceMapping:
+  #   Type: AWS::Lambda::EventSourceMapping
+  #   DependsOn:
+  #     - SampleCTRProcessorLambda
+  #     - SampleConnectCTRStream
+  #   Properties:
+  #     FunctionName: !Ref SampleCTRProcessorLambda
+  #     EventSourceArn: !GetAtt SampleConnectCTRStream.Arn
+  #     StartingPosition: LATEST
+  #     BatchSize: 100
+  #     MaximumBatchingWindowInSeconds: 5
+
+#####################################################
+# Lambda function to process Agent Events from Kinesis
+#####################################################
+  SampleAgentEventProcessorLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Function to process Agent Events from Kinesis and log to CloudWatch
+      Code:
+        ZipFile: |
+          import json
+          import base64
+          import logging
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
+          def lambda_handler(event, context):
+              for record in event['Records']:
+                  try:
+                      # Decode the base64 encoded data
+                      payload = base64.b64decode(record['kinesis']['data'])
+                      data = json.loads(payload.decode('utf-8'))
+                      # Log the Agent Event as JSON
+                      logger.info(json.dumps(data))
+                  except Exception as e:
+                      logger.error(f"Error processing record: {str(e)}")
+                      logger.error(f"Raw data: {record['kinesis']['data']}")
+      Handler: index.lambda_handler
+      Role: !GetAtt SampleIAMRole.Arn
+      Runtime: !FindInMap [Environment, Python, Runtime]
+
+  # SampleAgentEventProcessorEventSourceMapping:
+  #   Type: AWS::Lambda::EventSourceMapping
+  #   DependsOn:
+  #     - SampleAgentEventProcessorLambda
+  #     - SampleConnectAgentEventStream
+  #   Properties:
+  #     FunctionName: !Ref SampleAgentEventProcessorLambda
+  #     EventSourceArn: !GetAtt SampleConnectAgentEventStream.Arn
+  #     StartingPosition: LATEST
+  #     BatchSize: 100
+  #     MaximumBatchingWindowInSeconds: 5
+
 #####################################################
 # Display the outputs
 #####################################################
@@ -518,6 +667,21 @@ Outputs:
     Value: !Ref SampleAgentPassword
   ShowMeThePassword:
     Value: !Ref SampleAgentPassword # This only prints the ARN, not the password.
+  # ContactTraceRecordStreamARN:
+  #   Description: "Kinesis Data Stream ARN for Amazon Connect CTR streaming"
+  #   Value: !GetAtt SampleConnectCTRStream.Arn
+  # AgentEventsStreamARN:
+  #   Description: "Kinesis Data Stream ARN for Amazon Connect agent events"
+  #   Value: !GetAtt SampleConnectAgentEventStream.Arn
+  CTRProcessorLambdaARN:
+    Description: "Lambda function ARN for processing CTR events"
+    Value: !GetAtt SampleCTRProcessorLambda.Arn
+  AgentEventProcessorLambdaARN:
+    Description: "Lambda function ARN for processing Agent Events"
+    Value: !GetAtt SampleAgentEventProcessorLambda.Arn
+  SampleFnAssignClaimedPhoneNumber:
+    Description: "Lambda function to associate and disassociate the phone number to conatct flow"
+    Value: !Ref SampleFnAssignClaimedPhoneNumber
 #   DID:
 #     Description: Claimed Phone number
 #     Value: !GetAtt SamplePhonenumber.Address
