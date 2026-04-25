@@ -20,6 +20,14 @@ Parameters:
     Type: String
     Description: "ARN of the Lambda execution role"
 
+  EnableKinesisStreams:
+    Type: String
+    AllowedValues:
+      - true
+      - false
+    Default: true
+    Description: "Enable Kinesis streams for Contact Trace Records and Agent Events"
+
   CTRStreamArn:
     Type: String
     Description: "ARN of the CTR Kinesis stream"
@@ -28,11 +36,15 @@ Parameters:
     Type: String
     Description: "ARN of the Agent Events Kinesis stream"
 
+Conditions:
+  CreateKinesisStreams: !Equals [!Ref EnableKinesisStreams, true]
+
 Resources:
 #####################################################
 # Lambda function to process CTR events
 #####################################################
   CTRProcessorLambda:
+    Condition: CreateKinesisStreams
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: !Sub 'connect-ctr-processor-${AWS::StackName}'
@@ -50,12 +62,14 @@ Resources:
         LogGroup: !Ref CTRProcessorLogGroup
 
   CTRProcessorLogGroup:
+    Condition: CreateKinesisStreams
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub '/aws/lambda/connect-ctr-processor-${AWS::StackName}'
       RetentionInDays: 7
 
   CTRProcessorEventSourceMapping:
+    Condition: CreateKinesisStreams
     Type: AWS::Lambda::EventSourceMapping
     Properties:
       FunctionName: !Ref CTRProcessorLambda
@@ -68,6 +82,7 @@ Resources:
 # Lambda function to process Agent Events
 #####################################################
   AgentEventProcessorLambda:
+    Condition: CreateKinesisStreams
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: !Sub 'connect-agent-event-processor-${AWS::StackName}'
@@ -85,12 +100,14 @@ Resources:
         LogGroup: !Ref AgentEventProcessorLogGroup
 
   AgentEventProcessorLogGroup:
+    Condition: CreateKinesisStreams
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub '/aws/lambda/connect-agent-event-processor-${AWS::StackName}'
       RetentionInDays: 7
 
   AgentEventProcessorEventSourceMapping:
+    Condition: CreateKinesisStreams
     Type: AWS::Lambda::EventSourceMapping
     Properties:
       FunctionName: !Ref AgentEventProcessorLambda
@@ -101,24 +118,28 @@ Resources:
 
 Outputs:
   CTRProcessorLambdaArn:
+    Condition: CreateKinesisStreams
     Description: "ARN of the CTR Processor Lambda function"
     Value: !GetAtt CTRProcessorLambda.Arn
     Export:
       Name: !Sub '${AWS::StackName}-ctr-processor-arn'
 
   AgentEventProcessorLambdaArn:
+    Condition: CreateKinesisStreams
     Description: "ARN of the Agent Event Processor Lambda function"
     Value: !GetAtt AgentEventProcessorLambda.Arn
     Export:
       Name: !Sub '${AWS::StackName}-agent-event-processor-arn'
 
   CTRProcessorLogGroupName:
+    Condition: CreateKinesisStreams
     Description: "CloudWatch Log Group for CTR Processor"
     Value: !Ref CTRProcessorLogGroup
     Export:
       Name: !Sub '${AWS::StackName}-ctr-processor-logs'
 
   AgentEventProcessorLogGroupName:
+    Condition: CreateKinesisStreams
     Description: "CloudWatch Log Group for Agent Event Processor"
     Value: !Ref AgentEventProcessorLogGroup
     Export:

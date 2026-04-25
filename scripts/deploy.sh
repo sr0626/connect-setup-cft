@@ -5,7 +5,7 @@
 # 
 # This script packages Lambda functions and deploys the CloudFormation stack
 #
-# Usage: ./deploy.sh <stack-name> <aws-region> [lambda-code-bucket]
+# Usage: ./deploy.sh <stack-name> <aws-region> [lambda-code-bucket] [enable-kinesis-streams]
 ###############################################################################
 
 set -e
@@ -31,21 +31,24 @@ print_warning() {
 
 # Validate arguments
 if [ $# -lt 2 ]; then
-    print_error "Usage: ./deploy.sh <stack-name> <aws-region> [lambda-code-bucket]"
+    print_error "Usage: ./deploy.sh <stack-name> <aws-region> [lambda-code-bucket] [enable-kinesis-streams]"
     echo "  stack-name: CloudFormation stack name"
     echo "  aws-region: AWS region (e.g., us-east-1)"
     echo "  lambda-code-bucket: S3 bucket for Lambda packages (optional, will create if not specified)"
+    echo "  enable-kinesis-streams: true/false (optional, default: true)"
     exit 1
 fi
 
 STACK_NAME=$1
 AWS_REGION=$2
 LAMBDA_BUCKET=${3:-"connect-lambda-code-$(date +%s)"}
+ENABLE_KINESIS_STREAMS=${4:-true}
 
 print_status "Starting Amazon Connect deployment"
 print_status "Stack Name: $STACK_NAME"
 print_status "Region: $AWS_REGION"
 print_status "Lambda Code Bucket: $LAMBDA_BUCKET"
+print_status "Enable Kinesis Streams: $ENABLE_KINESIS_STREAMS"
 
 # Create S3 bucket if it doesn't exist
 print_status "Checking if Lambda code bucket exists..."
@@ -102,8 +105,8 @@ aws cloudformation deploy \
     --template-file templates/main.yaml \
     --stack-name "$STACK_NAME" \
     --region "$AWS_REGION" \
-    --parameter-overrides LambdaCodeBucket="$LAMBDA_BUCKET" \
-    --capabilities CAPABILITY_NAMED_IAM CAPABILITY_IAM
+    --parameter-overrides LambdaCodeBucket="$LAMBDA_BUCKET" EnableKinesisStreams="$ENABLE_KINESIS_STREAMS" \
+    --capabilities CAPABILITY_NAMED_IAM CAPABILITY_IAM CAPABILITY_AUTO_EXPAND
 
 print_status "Retrieving stack outputs..."
 aws cloudformation describe-stacks \

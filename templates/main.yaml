@@ -6,6 +6,14 @@ Parameters:
     Type: String
     Description: "S3 bucket where Lambda deployment packages are stored"
 
+  EnableKinesisStreams:
+    Type: String
+    AllowedValues:
+      - true
+      - false
+    Default: true
+    Description: "Enable Kinesis streams for Contact Trace Records and Agent Events"
+
 Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
@@ -13,6 +21,13 @@ Metadata:
           default: "Lambda Configuration"
         Parameters:
           - LambdaCodeBucket
+      - Label:
+          default: "Kinesis Configuration"
+        Parameters:
+          - EnableKinesisStreams
+
+Conditions:
+  CreateKinesisStreams: !Equals [!Ref EnableKinesisStreams, true]
 
 Resources:
 #####################################################
@@ -41,6 +56,7 @@ Resources:
 # Kinesis Streams Stack
 #####################################################
   KinesisStack:
+    Condition: CreateKinesisStreams
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${LambdaCodeBucket}/templates/stacks/kinesis-streams.yaml'
@@ -52,10 +68,10 @@ Resources:
 # Lambda Functions Stack
 #####################################################
   LambdaStack:
+    Condition: CreateKinesisStreams
     Type: AWS::CloudFormation::Stack
     DependsOn:
       - IAMStack
-      - KinesisStack
     Properties:
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${LambdaCodeBucket}/templates/stacks/lambdas.yaml'
       Parameters:
@@ -74,14 +90,14 @@ Resources:
     Type: AWS::CloudFormation::Stack
     DependsOn:
       - StorageStack
-      - KinesisStack
     Properties:
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${LambdaCodeBucket}/templates/stacks/connect-instance.yaml'
       Parameters:
         S3BucketName: !GetAtt StorageStack.Outputs.S3BucketName
         KmsKeyArn: !GetAtt StorageStack.Outputs.KmsKeyArn
-        CTRStreamArn: !GetAtt KinesisStack.Outputs.CTRStreamArn
-        AgentEventStreamArn: !GetAtt KinesisStack.Outputs.AgentEventStreamArn
+        EnableKinesisStreams: !Ref EnableKinesisStreams
+        CTRStreamArn: !If [CreateKinesisStreams, !GetAtt KinesisStack.Outputs.CTRStreamArn, ""]
+        AgentEventStreamArn: !If [CreateKinesisStreams, !GetAtt KinesisStack.Outputs.AgentEventStreamArn, ""]
       Tags:
         - Key: Application
           Value: AmazonConnect
@@ -104,18 +120,22 @@ Outputs:
     Value: !GetAtt StorageStack.Outputs.S3BucketName
 
   CTRStreamArn:
+    Condition: CreateKinesisStreams
     Description: "Contact Trace Records Kinesis Stream ARN"
     Value: !GetAtt KinesisStack.Outputs.CTRStreamArn
 
   AgentEventStreamArn:
+    Condition: CreateKinesisStreams
     Description: "Agent Events Kinesis Stream ARN"
     Value: !GetAtt KinesisStack.Outputs.AgentEventStreamArn
 
   CTRProcessorLambdaArn:
+    Condition: CreateKinesisStreams
     Description: "CTR Processor Lambda ARN"
     Value: !GetAtt LambdaStack.Outputs.CTRProcessorLambdaArn
 
   AgentEventProcessorLambdaArn:
+    Condition: CreateKinesisStreams
     Description: "Agent Event Processor Lambda ARN"
     Value: !GetAtt LambdaStack.Outputs.AgentEventProcessorLambdaArn
 

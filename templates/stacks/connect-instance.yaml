@@ -10,6 +10,14 @@ Parameters:
     Type: String
     Description: "KMS key ARN for S3 encryption"
 
+  EnableKinesisStreams:
+    Type: String
+    AllowedValues:
+      - true
+      - false
+    Default: true
+    Description: "Enable Kinesis streams for Contact Trace Records and Agent Events"
+
   CTRStreamArn:
     Type: String
     Description: "ARN of the Contact Trace Records Kinesis stream"
@@ -17,6 +25,9 @@ Parameters:
   AgentEventStreamArn:
     Type: String
     Description: "ARN of the Agent Events Kinesis stream"
+
+Conditions:
+  CreateKinesisStreams: !Equals [!Ref EnableKinesisStreams, true]
 
 Resources:
 #####################################################
@@ -54,6 +65,7 @@ Resources:
 # Amazon Connect Storage Configuration - CTR
 #####################################################
   ConnectStorageCTR:
+    Condition: CreateKinesisStreams
     Type: AWS::Connect::InstanceStorageConfig
     DependsOn:
       - ConnectInstance
@@ -68,6 +80,7 @@ Resources:
 # Amazon Connect Storage Configuration - Agent Events
 #####################################################
   ConnectStorageAgentEvents:
+    Condition: CreateKinesisStreams
     Type: AWS::Connect::InstanceStorageConfig
     DependsOn:
       - ConnectInstance
