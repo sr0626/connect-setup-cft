@@ -119,3 +119,8 @@ echo "Region: $AWS_REGION"
 echo ""
 echo "To view stack status:"
 echo "  aws cloudformation describe-stacks --stack-name $STACK_NAME --region $AWS_REGION"
+echo ""
+echo "To delete stack:"
+echo "aws cloudformation wait stack-delete-complete --stack-name $STACK_NAME --region $AWS_REGION && aws cloudformation delete-stack --stack-name $STACK_NAME --region $AWS_REGION"
+
+

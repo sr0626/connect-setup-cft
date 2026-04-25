@@ -20,6 +20,14 @@ Parameters:
     Type: String
     Description: "ARN of the Lambda execution role"
 
+  CTRStreamArn:
+    Type: String
+    Description: "ARN of the CTR Kinesis stream"
+
+  AgentEventStreamArn:
+    Type: String
+    Description: "ARN of the Agent Events Kinesis stream"
+
 Resources:
 #####################################################
 # Lambda function to process CTR events
@@ -51,7 +59,7 @@ Resources:
     Type: AWS::Lambda::EventSourceMapping
     Properties:
       FunctionName: !Ref CTRProcessorLambda
-      EventSourceArn: !Sub '{{resolve:secretsmanager:ctr-stream-arn:SecretString:arn}}'
+      EventSourceArn: !Ref CTRStreamArn
       StartingPosition: LATEST
       BatchSize: 100
       MaximumBatchingWindowInSeconds: 5
@@ -81,6 +89,15 @@ Resources:
     Properties:
       LogGroupName: !Sub '/aws/lambda/connect-agent-event-processor-${AWS::StackName}'
       RetentionInDays: 7
+
+  AgentEventProcessorEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      FunctionName: !Ref AgentEventProcessorLambda
+      EventSourceArn: !Ref AgentEventStreamArn
+      StartingPosition: LATEST
+      BatchSize: 100
+      MaximumBatchingWindowInSeconds: 5
 
 Outputs:
   CTRProcessorLambdaArn:

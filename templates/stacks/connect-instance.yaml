@@ -170,7 +170,7 @@ Resources:
       - Queue
     Properties:
       InstanceArn: !GetAtt ConnectInstance.Arn
-      Name: SampleContactflow
+      Name: MyWelcomeContactflow
       Description: 'Sample contact flow that plays a message and transfers to queue'
       Type: CONTACT_FLOW
       Content: !Sub |

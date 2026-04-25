@@ -21,7 +21,6 @@ Resources:
   IAMStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      StackName: !Sub 'connect-iam-${AWS::StackName}'
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${LambdaCodeBucket}/templates/stacks/iam-role.yaml'
       Tags:
         - Key: Application
@@ -33,7 +32,6 @@ Resources:
   StorageStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      StackName: !Sub 'connect-storage-${AWS::StackName}'
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${LambdaCodeBucket}/templates/stacks/storage.yaml'
       Tags:
         - Key: Application
@@ -45,7 +43,6 @@ Resources:
   KinesisStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      StackName: !Sub 'connect-kinesis-${AWS::StackName}'
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${LambdaCodeBucket}/templates/stacks/kinesis-streams.yaml'
       Tags:
         - Key: Application
@@ -60,11 +57,12 @@ Resources:
       - IAMStack
       - KinesisStack
     Properties:
-      StackName: !Sub 'connect-lambdas-${AWS::StackName}'
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${LambdaCodeBucket}/templates/stacks/lambdas.yaml'
       Parameters:
         LambdaCodeBucket: !Ref LambdaCodeBucket
         LambdaExecutionRoleArn: !GetAtt IAMStack.Outputs.LambdaExecutionRoleArn
+        CTRStreamArn: !GetAtt KinesisStack.Outputs.CTRStreamArn
+        AgentEventStreamArn: !GetAtt KinesisStack.Outputs.AgentEventStreamArn
       Tags:
         - Key: Application
           Value: AmazonConnect
@@ -78,7 +76,6 @@ Resources:
       - StorageStack
       - KinesisStack
     Properties:
-      StackName: !Sub 'connect-instance-${AWS::StackName}'
       TemplateURL: !Sub 'https://s3.${AWS::Region}.amazonaws.com/${LambdaCodeBucket}/templates/stacks/connect-instance.yaml'
       Parameters:
         S3BucketName: !GetAtt StorageStack.Outputs.S3BucketName
